@@ -41,7 +41,7 @@ router.post('/create', forAdmin,
             console.log(err);
             res.status(500).json({ message: 'somthing went wrong' });
         }
-    })
+    });
 
 router.put('/update/:id', forAdmin,
     body('name').isString().withMessage("please enter a valid book name"),
@@ -98,7 +98,6 @@ router.delete('/delete/:id', forAdmin,
                     connection.query('delete from books where isbn = ?',
                         results[0].isbn, (err, results, fields) => {
                             if (err) {
-                                console.log("here is the error" + err);
                                 res.status(500).json({ err: err });
                             }
                             else {
@@ -146,14 +145,15 @@ router.get('/getabook/:id', authorized,
     })
 router.get('/filter', forAdmin,
     (req, res) => {
-        connection.query('select * from books where isbn = ? And rack_num = ?',
+       
+        connection.query('select * from books where isbn = ? OR rack_num = ?',
             [req.query.isbn, req.query.rack_num], (err, results, fields) => {
                 if (err) {
                     console.log(err);
                     res.status(500).json({ err: err });
                 }
                 if (results.length == 0) {
-                    res.json({ message: "there is no book with this isbn" });
+                    res.json({ message: "no match" });
                 }
                 else {
                     res.json({ results });
@@ -162,10 +162,10 @@ router.get('/filter', forAdmin,
     });
 
 router.post('/borrow', authorized, (req, res) => {
-    connection.query('select * from users where id = ?', req.body.id
-        , (err, results0, fields) => {
-            if (!results0.length)
-                res.status(404).json({ message: "user not found" });
+    connection.query('select * from borrowed_books where user_id = ? AND book_name= ?', 
+    [req.body.id,req.body.name], (err, results0, fields) => {
+            if (results0.length)
+                res.status(404).json({ message: "you have sent this requiste before" });
             else {
                 connection.query('select * from books where name = ?',
                     req.body.name, (err, results1, fields) => {
@@ -179,20 +179,28 @@ router.post('/borrow', authorized, (req, res) => {
                                 res.status(500).json({ message: "this book is not available" });
                             }
                             else {
-                                const dataOfBook = {
-                                    book_isbn: results1[0].isbn,
-                                    book_name: results1[0].name,
-                                    user_id: results0[0].id,
-                                    user_name: results0[0].name
-                                }
-                                connection.query('insert borrowed_books set ?',
-                                    dataOfBook, (err, results, fields) => {
-                                        if (err)
-                                            console.log(err)
-                                        else {
-                                            res.status(200).json({ message: "the book is wiating to be aprroved " });
+                                connection.query('select * from borrowed_books where user_id=?',
+                                req.body.id,(err,results2,fields)=>{
+                                    if(results2.length>=5){
+                                        res.json({message:"your reached the maximum number of requistes!"})
+                                    }
+                                    else{
+                                        const dataOfBook = {
+                                            book_isbn: results1[0].isbn,
+                                            book_name: results1[0].name,
+                                            user_id: req.body.id,
                                         }
-                                    })
+                                        connection.query('insert borrowed_books set ?',
+                                            dataOfBook, (err, results, fields) => {
+                                                if (err)
+                                                    console.log(err)
+                                                else {
+                                                    res.status(200).json({ message: "the book is wiating to be aprroved " });
+                                                }
+                                            })
+                                    }
+                                })
+                                
                             }
                         }
                     })
@@ -201,17 +209,17 @@ router.post('/borrow', authorized, (req, res) => {
 });
 
 router.patch('/updateBorrowReq', forAdmin, (req, res) => {
-    connection.query('update borrowed_books set approve = ? where book_isbn = ?',
-        [req.body.approve, req.body.book_isbn], (err, results0, fields) => {
+    connection.query('update borrowed_books set approve = ? where user_id = ? AND book_isbn = ?',
+        [req.body.approve, req.body.user_id, req.body.book_isbn], (err, results0, fields) => {
             if (err)
                 console.log(err);
-            if (results0.length == 0) {
-                res.status(404).json({ message: "this book is not found" })
+            if (results0.affectedRows == 0) {
+                res.status(404).json({ message: "the book or the user is not found" })
             }
             else {
                 if (req.body.approve == false) {
-                    connection.query('DELETE FROM borrowed_books WHERE book_isbn = ?',
-                        req.body.book_isbn, (err, results1, fields) => {
+                    connection.query('DELETE FROM borrowed_books WHERE user_id = ? AND book_isbn = ? ',
+                        [req.body.user_id,req.body.book_isbn], (err, results1, fields) => {
                             if (err)
                                 console.log(err);
                             else {
@@ -235,13 +243,13 @@ router.patch('/updateBorrowReq', forAdmin, (req, res) => {
         })
 });
 
-router.get('/listBorrowedBooks', authorized, (req, res) => {
-    connection.query('SELECT * FROM books WHERE available = 0'
-        , (err, results, fields) => {
+router.get('/listBorrowedBooks/:id', authorized, (req, res) => {
+    connection.query('SELECT * FROM borrowed_books WHERE user_id = ? AND approve = 1',
+        req.params.id, (err, results, fields) => {
             if (err)
                 console.log(err)
             if (!results.length)
-                res.json({ message: "there is no borrowed books" });
+                res.json({ message: "u didnt borrow any books yet!" });
             else
                 res.json({ results });
         })
@@ -255,7 +263,7 @@ router.get('/search', authorized,
                     res.status(500).json({ err: err });
                 }
                 if (results.length == 0) {
-                    res.json({ message: "there is no book with this isbn" });
+                    res.json({ message: "no matching..." });
                 }
                 else {
                     res.json({ results });
