@@ -24,12 +24,17 @@ router.post('/login',
                 {
 
                     if (results[0].approve == null || results[0].approve == false) {
-                        res.status(403).json({ message: 'not apporved yet' });
+                        res.status(403).json({ 
+                            errors :[
+                                {
+                                    message: 'not apporved yet'
+                                }
+                            ] });
                     }
 
                     //compare to password
-                    const chickOnPassword = bcrypt.compareSync(req.body.password, results[0].password);
-                    if (chickOnPassword) {
+                    const checkOnPassword = bcrypt.compareSync(req.body.password, results[0].password);
+                    if (checkOnPassword) {
                         delete results[0].password;
                         if(results[0].role==1)
                         res.status(200).json({ message: "welcome admin", data: results[0] });
@@ -37,18 +42,25 @@ router.post('/login',
                         res.status(200).json({ message: "welcome user", data: results[0] });
                     }
                     else {
-                        res.json({ message: "incorrect password" });
+                        res.status(401).json({                            
+                                    message: 'incorrect password',
+                        });
                     }
 
                 }
                 else {
-                    res.json({message:'the email is not found!'});
+                    res.status(404).json({
+                        
+                        
+                            message: 'the email is not found!'
+                        }
+                        );
                 }
 
             });
         }
         catch(err){
-            console.log(err);
+            res.json({err:err});
         }
     });
 
@@ -72,7 +84,7 @@ router.post('/register',
                         console.log(err);
                     }
                     if (results.length > 0) {
-                        return res.json({ message: "the eamil is already token" });
+                        return res.json({ message: "the eamil is already taken" });
                     }
                     else {
                         //3-prepare user object before inser it
@@ -126,7 +138,7 @@ body('password').isLength({ min: 8, max: 15 })
                     console.log(err);
                 }
                 if (results.length > 0) {
-                    return res.json({ message: "the eamil is already token" });
+                    return res.json({ message: "the eamil is already taken" });
                 }
                 else {
                     //3-prepare user object before inser it
@@ -170,11 +182,18 @@ router.route('/userRequest').get(forAdmin,(req, res) => {
         res.json({ results });
     });
 }).patch(forAdmin,(req, res) => {
+    
     connection.query('update users set approve = ? where id = ?', 
-    [req.body.approve, req.body.id], (err, results, fields) => {
+    [req.body.approve,req.body.id], (err, results, fields) => {
+        
         if (err)
             console.log(err);
             else{
+                if(results.affectedRows==0){
+                    return res.status(404).json({message:"this user is not found!"});
+                }
+                else
+                {
                 if(req.body.approve==false){
                     connection.query('DELETE FROM users WHERE id = ?',
                     req.body.id,(err,results,fields)=>{
@@ -187,6 +206,7 @@ router.route('/userRequest').get(forAdmin,(req, res) => {
                 }
                 else
                     res.json({ message:"the Approval done" ,results});
+                }
     }
     })
 });
